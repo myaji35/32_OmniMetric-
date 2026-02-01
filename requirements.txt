@@ -17,7 +17,7 @@ shap==0.44.0
 lime==0.2.0.1
 
 # Parallelism
-ray[default]==2.9.0
+ray[default]==2.53.0
 celery[redis]==5.3.4
 redis==5.0.1
 
