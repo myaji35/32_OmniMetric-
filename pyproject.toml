@@ -1,0 +1,77 @@
+[tool.poetry]
+name = "omnimetric"
+version = "1.0.0"
+description = "전방위 통계 분석 및 의사결정 엔진 - 60+ 알고리즘 토너먼트 시스템"
+authors = ["주식회사 가가호호 <ceo@gagahoho.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+pydantic = "^2.5.0"
+pydantic-settings = "^2.1.0"
+
+# ML & Statistics
+pycaret = "^3.2.0"
+scikit-learn = "^1.4.0"
+statsmodels = "^0.14.1"
+xgboost = "^2.0.3"
+lightgbm = "^4.3.0"
+catboost = "^1.2.2"
+
+# XAI
+shap = "^0.44.0"
+lime = "^0.2.0.1"
+
+# Parallelism
+ray = {extras = ["default"], version = "^2.9.0"}
+celery = {extras = ["redis"], version = "^5.3.4"}
+redis = "^5.0.1"
+
+# Data Processing
+pandas = "^2.1.4"
+numpy = "^1.26.3"
+polars = "^0.20.3"
+
+# Utilities
+python-dotenv = "^1.0.0"
+httpx = "^0.26.0"
+loguru = "^0.7.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.4"
+pytest-asyncio = "^0.23.3"
+pytest-cov = "^4.1.0"
+black = "^24.1.0"
+ruff = "^0.1.14"
+mypy = "^1.8.0"
+pre-commit = "^3.6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

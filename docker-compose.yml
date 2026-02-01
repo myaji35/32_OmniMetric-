@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # Redis - for Celery & Caching
+  redis:
+    image: redis:7-alpine
+    container_name: omnimetric-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - omnimetric-network
+
+  # PostgreSQL - for result persistence (optional)
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnimetric-postgres
+    environment:
+      POSTGRES_DB: omnimetric
+      POSTGRES_USER: omnimetric
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnimetric"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omnimetric-network
+
+  # OmniMetric API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omnimetric-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+    volumes:
+      - ./app:/app/app
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - omnimetric-network
+    restart: unless-stopped
+
+  # Celery Worker (optional - if using Celery instead of Ray)
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omnimetric-celery-worker
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - ENVIRONMENT=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./app:/app/app
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+      - api
+    networks:
+      - omnimetric-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  omnimetric-network:
+    driver: bridge
