@@ -1,3 +1,13 @@
+
+# [0032] OmniMetric
+
+## Identity
+- **ID**: 0032
+- **Category**: SaaS
+- **Governance**: [9999] Master Root
+- **Status**: Sentinel-Standardized
+
+---
 # OmniMetric
 
 **전방위 통계 분석 및 의사결정 엔진**
