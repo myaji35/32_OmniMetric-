@@ -1,0 +1,1 @@
+- [project_omnimetric_status.md](project_omnimetric_status.md) - OmniMetric(XAISimTier) PRD v2.0 기반 프로젝트 현황 및 구현 상태

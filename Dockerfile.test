@@ -1,0 +1,34 @@
+FROM python:3.11-slim
+
+LABEL maintainer="주식회사 가가호호 <ceo@gagahoho.com>"
+LABEL description="OmniMetric Test Environment"
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files
+COPY requirements.txt pyproject.toml ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir pytest pytest-asyncio pytest-cov
+
+# Copy application code and tests
+COPY ./app ./app
+COPY ./tests ./tests
+COPY .env.example .env
+COPY run_simple_test.py ./
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Run tests
+CMD ["python3", "run_simple_test.py"]

@@ -16,9 +16,10 @@
 
 ## 🎯 핵심 기능
 
-### 1️⃣ 60+ 알고리즘 토너먼트
-- 선형/비선형 회귀, 트리 기반 모델, 정보 이론 등 60개 이상의 알고리즘 동시 실행
+### 1️⃣ 59+ 알고리즘 토너먼트
+- 선형/비선형 회귀, 트리 기반 모델, 정보 이론 등 59개 이상의 알고리즘 동시 실행
 - $R^2$, Adj. $R^2$, P-value 기반 최적 모델 자동 선정
+- ℹ️ CatBoost는 Python 3.14와 호환 문제로 제외 (Python 3.11에서는 60개)
 
 ### 2️⃣ 초고속 병렬 처리
 - Ray 기반 분산 컴퓨팅으로 1만 행 데이터 1분 이내 분석
@@ -41,7 +42,8 @@
 ## 🚀 빠른 시작
 
 ### 사전 요구사항
-- Python 3.11+
+- **Python 3.11** (권장) 또는 3.12
+  - ⚠️ Python 3.14는 일부 패키지(Ray, CatBoost)와 호환되지 않습니다
 - Docker & Docker Compose (선택사항)
 - Redis (로컬 또는 Docker)
 
@@ -85,6 +87,30 @@ docker-compose up -d
 서버가 시작되면 다음 URL로 접근 가능:
 - API 문서: http://localhost:8000/docs
 - 헬스 체크: http://localhost:8000/health
+
+### 테스트 실행
+
+**간단한 테스트 (Ray/Redis 불필요)**
+```bash
+python3 run_simple_test.py
+```
+
+**전체 통합 테스트 (pytest 필요, Python 3.11 권장)**
+```bash
+pip install pytest pytest-asyncio ray
+pytest tests/ -v
+```
+
+⚠️ **Python 3.14 사용 시 주의사항**
+- Ray 패키지가 Python 3.14를 지원하지 않아 전체 테스트 실행 불가
+- 간단한 테스트(`run_simple_test.py`)는 정상 동작
+- 전체 테스트가 필요한 경우 Python 3.11 사용 권장
+
+**Docker 환경 테스트**
+```bash
+docker build -f Dockerfile.test -t omnimetric-test:latest .
+docker run --rm omnimetric-test:latest
+```
 
 ---
 

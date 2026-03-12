@@ -1,0 +1,13 @@
+{
+  "id": "0032",
+  "name": "OmniMetric",
+  "phase": "plan",
+  "progress": 100,
+  "priority": "high",
+  "tags": ["xaisimtier", "ai-engine", "125-algorithms"],
+  "category": "product",
+  "description": "XAISimTier completion - PRD v2.0 full implementation",
+  "feature": "xaisimtier-completion",
+  "servers": [],
+  "updatedAt": "2026-03-12T12:00:00.000000"
+}

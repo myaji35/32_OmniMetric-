@@ -1,23 +1,36 @@
 """
-Parallel Processing Engine with Ray
-Ray 기반 분산 병렬 처리 시스템
+Parallel Processing Engine with Ray or Multiprocessing Fallback
+Ray 기반 분산 병렬 처리 시스템 (Ray 미지원 시 multiprocessing 사용)
 """
-import ray
 from typing import List, Dict, Any, Callable
 from loguru import logger
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+
+# Ray 선택적 임포트
+try:
+    import ray
+    RAY_AVAILABLE = True
+except ImportError:
+    RAY_AVAILABLE = False
+    logger.warning("⚠️ Ray를 사용할 수 없습니다. multiprocessing으로 대체합니다.")
 
 from app.core.config import settings
 
 
 class RayCluster:
-    """Ray 클러스터 관리"""
+    """Ray 클러스터 관리 (Ray 사용 가능한 경우만)"""
 
     _initialized = False
 
     @classmethod
     def initialize(cls) -> None:
         """Ray 클러스터 초기화"""
+        if not RAY_AVAILABLE:
+            logger.info("Ray를 사용할 수 없습니다. 초기화 건너뜁니다.")
+            return
+
         if cls._initialized:
             logger.info("Ray 클러스터가 이미 초기화되어 있습니다.")
             return
@@ -43,7 +56,7 @@ class RayCluster:
     @classmethod
     def shutdown(cls) -> None:
         """Ray 클러스터 종료"""
-        if cls._initialized:
+        if RAY_AVAILABLE and cls._initialized:
             ray.shutdown()
             cls._initialized = False
             logger.info("🛑 Ray 클러스터 종료 완료")
@@ -54,88 +67,102 @@ class RayCluster:
         return cls._initialized
 
 
-@ray.remote
-class AlgorithmWorker:
+def _run_algorithm_worker(
+    algorithm_func: Callable,
+    X: Any,
+    y: Any,
+    algorithm_name: str,
+    worker_id: int = 0
+) -> Dict[str, Any]:
     """
-    개별 알고리즘 실행 워커
-    각 알고리즘을 독립적으로 실행하고 결과 반환
+    알고리즘 실행 (multiprocessing용 독립 함수)
+
+    Args:
+        algorithm_func: 실행할 알고리즘 함수
+        X: 독립 변수
+        y: 종속 변수
+        algorithm_name: 알고리즘 이름
+        worker_id: 워커 ID
+
+    Returns:
+        실행 결과 딕셔너리 (r2_score, execution_time 등)
     """
+    start_time = time.time()
 
-    def __init__(self, worker_id: int):
-        self.worker_id = worker_id
-        logger.info(f"워커 {worker_id} 초기화됨")
+    try:
+        result = algorithm_func(X, y)
+        execution_time = time.time() - start_time
 
-    def run_algorithm(
-        self,
-        algorithm_func: Callable,
-        X: Any,
-        y: Any,
-        algorithm_name: str
-    ) -> Dict[str, Any]:
+        return {
+            "algorithm_name": algorithm_name,
+            "r2_score": result.get("r2_score", 0.0),
+            "adj_r2_score": result.get("adj_r2_score"),
+            "p_value": result.get("p_value"),
+            "execution_time": execution_time,
+            "model": result.get("model"),
+            "coefficients": result.get("coefficients", {}),
+            "status": "success",
+            "error": None
+        }
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        logger.error(f"워커 {worker_id}: {algorithm_name} 실패 - {str(e)}")
+
+        return {
+            "algorithm_name": algorithm_name,
+            "r2_score": -1.0,
+            "adj_r2_score": None,
+            "p_value": None,
+            "execution_time": execution_time,
+            "model": None,
+            "coefficients": {},
+            "status": "failed",
+            "error": str(e)
+        }
+
+
+# Ray 사용 가능한 경우에만 AlgorithmWorker 정의
+if RAY_AVAILABLE:
+    @ray.remote
+    class AlgorithmWorker:
         """
-        알고리즘 실행
-
-        Args:
-            algorithm_func: 실행할 알고리즘 함수
-            X: 독립 변수
-            y: 종속 변수
-            algorithm_name: 알고리즘 이름
-
-        Returns:
-            실행 결과 딕셔너리 (r2_score, execution_time 등)
+        개별 알고리즘 실행 워커 (Ray 전용)
+        각 알고리즘을 독립적으로 실행하고 결과 반환
         """
-        start_time = time.time()
-        logger.info(f"워커 {self.worker_id}: {algorithm_name} 실행 시작")
 
-        try:
-            result = algorithm_func(X, y)
-            execution_time = time.time() - start_time
+        def __init__(self, worker_id: int):
+            self.worker_id = worker_id
+            logger.info(f"워커 {worker_id} 초기화됨")
 
-            logger.info(
-                f"워커 {self.worker_id}: {algorithm_name} 완료 "
-                f"(R²={result.get('r2_score', 0):.4f}, {execution_time:.2f}초)"
-            )
-
-            return {
-                "algorithm_name": algorithm_name,
-                "r2_score": result.get("r2_score", 0.0),
-                "adj_r2_score": result.get("adj_r2_score"),
-                "p_value": result.get("p_value"),
-                "execution_time": execution_time,
-                "model": result.get("model"),
-                "coefficients": result.get("coefficients", {}),
-                "status": "success",
-                "error": None
-            }
-
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"워커 {self.worker_id}: {algorithm_name} 실패 - {str(e)}")
-
-            return {
-                "algorithm_name": algorithm_name,
-                "r2_score": -1.0,
-                "adj_r2_score": None,
-                "p_value": None,
-                "execution_time": execution_time,
-                "model": None,
-                "coefficients": {},
-                "status": "failed",
-                "error": str(e)
-            }
+        def run_algorithm(
+            self,
+            algorithm_func: Callable,
+            X: Any,
+            y: Any,
+            algorithm_name: str
+        ) -> Dict[str, Any]:
+            """알고리즘 실행"""
+            return _run_algorithm_worker(algorithm_func, X, y, algorithm_name, self.worker_id)
 
 
 class ParallelTournament:
     """
     병렬 알고리즘 토너먼트 관리자
     60개 알고리즘을 동시에 실행하고 결과 집계
+    Ray 또는 multiprocessing 사용
     """
 
     def __init__(self, max_workers: int = None):
         self.max_workers = max_workers or settings.tournament_max_workers
+        self.use_ray = RAY_AVAILABLE
 
-        if not RayCluster.is_initialized():
-            RayCluster.initialize()
+        if self.use_ray and not RayCluster.is_initialized():
+            try:
+                RayCluster.initialize()
+            except Exception as e:
+                logger.warning(f"Ray 초기화 실패, multiprocessing으로 전환: {e}")
+                self.use_ray = False
 
     def run_tournament(
         self,
@@ -154,7 +181,19 @@ class ParallelTournament:
         Returns:
             모든 알고리즘 실행 결과 리스트
         """
-        logger.info(f"🏁 토너먼트 시작: {len(algorithms)}개 알고리즘")
+        if self.use_ray:
+            return self._run_tournament_ray(algorithms, X, y)
+        else:
+            return self._run_tournament_multiprocessing(algorithms, X, y)
+
+    def _run_tournament_ray(
+        self,
+        algorithms: List[tuple[str, Callable]],
+        X: Any,
+        y: Any
+    ) -> List[Dict[str, Any]]:
+        """Ray를 사용한 병렬 토너먼트"""
+        logger.info(f"🏁 토너먼트 시작 (Ray): {len(algorithms)}개 알고리즘")
         start_time = time.time()
 
         # Ray 객체 저장소에 데이터 업로드 (한 번만)
@@ -186,7 +225,65 @@ class ParallelTournament:
         failed = [r for r in results if r["status"] == "failed"]
 
         logger.info(
-            f"🏆 토너먼트 완료: "
+            f"🏆 토너먼트 완료 (Ray): "
+            f"{len(successful)}개 성공, {len(failed)}개 실패 "
+            f"(총 소요 시간: {total_time:.2f}초)"
+        )
+
+        return results
+
+    def _run_tournament_multiprocessing(
+        self,
+        algorithms: List[tuple[str, Callable]],
+        X: Any,
+        y: Any
+    ) -> List[Dict[str, Any]]:
+        """multiprocessing을 사용한 병렬 토너먼트 (fallback)"""
+        logger.info(f"🏁 토너먼트 시작 (multiprocessing): {len(algorithms)}개 알고리즘")
+        start_time = time.time()
+
+        results = []
+        max_workers = min(self.max_workers, multiprocessing.cpu_count())
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # 모든 알고리즘을 비동기로 제출
+            future_to_algo = {}
+            for algo_name, algo_func in algorithms:
+                future = executor.submit(_run_algorithm_worker, algo_func, X, y, algo_name)
+                future_to_algo[future] = algo_name
+
+            # 완료된 작업부터 결과 수집
+            for future in as_completed(future_to_algo):
+                try:
+                    result = future.result(timeout=300)  # 5분 타임아웃
+                    results.append(result)
+                    if result["status"] == "success":
+                        logger.info(
+                            f"✅ {result['algorithm_name']}: "
+                            f"R²={result['r2_score']:.4f} "
+                            f"({result['execution_time']:.2f}초)"
+                        )
+                except Exception as e:
+                    algo_name = future_to_algo[future]
+                    logger.error(f"❌ {algo_name}: 실행 실패 - {str(e)}")
+                    results.append({
+                        "algorithm_name": algo_name,
+                        "r2_score": -1.0,
+                        "adj_r2_score": None,
+                        "p_value": None,
+                        "execution_time": 0.0,
+                        "model": None,
+                        "coefficients": {},
+                        "status": "failed",
+                        "error": str(e)
+                    })
+
+        total_time = time.time() - start_time
+        successful = [r for r in results if r["status"] == "success"]
+        failed = [r for r in results if r["status"] == "failed"]
+
+        logger.info(
+            f"🏆 토너먼트 완료 (multiprocessing): "
             f"{len(successful)}개 성공, {len(failed)}개 실패 "
             f"(총 소요 시간: {total_time:.2f}초)"
         )

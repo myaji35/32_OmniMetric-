@@ -1,0 +1,9 @@
+# Minimal dependencies for testing
+pandas
+numpy
+scikit-learn
+statsmodels
+loguru
+python-dotenv==1.0.0
+pytest
+pytest-asyncio

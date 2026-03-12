@@ -5,9 +5,22 @@ SHAP 및 LIME 기반 모델 해석
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional
-import shap
-from lime import lime_tabular
 from loguru import logger
+
+# SHAP와 LIME 선택적 임포트
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    logger.warning("⚠️ SHAP을 사용할 수 없습니다. XAI 기능이 제한됩니다.")
+
+try:
+    from lime import lime_tabular
+    LIME_AVAILABLE = True
+except ImportError:
+    LIME_AVAILABLE = False
+    logger.warning("⚠️ LIME을 사용할 수 없습니다. XAI 기능이 제한됩니다.")
 
 from app.core.config import settings
 
@@ -16,9 +29,12 @@ class XAIEngine:
     """XAI 통합 엔진"""
 
     def __init__(self):
-        self.enable_shap = settings.xai_enable_shap
-        self.enable_lime = settings.xai_enable_lime
+        self.enable_shap = settings.xai_enable_shap and SHAP_AVAILABLE
+        self.enable_lime = settings.xai_enable_lime and LIME_AVAILABLE
         self.max_features = settings.xai_max_features
+
+        if not SHAP_AVAILABLE and not LIME_AVAILABLE:
+            logger.warning("⚠️ SHAP와 LIME 모두 사용할 수 없습니다. XAI 기능이 비활성화됩니다.")
 
     def explain_model(
         self,
@@ -87,6 +103,9 @@ class XAIEngine:
         Returns:
             SHAP 분석 결과
         """
+        if not SHAP_AVAILABLE:
+            return None
+
         try:
             logger.info(f"  SHAP 분석 중: {algorithm_name}")
 
@@ -176,6 +195,9 @@ class XAIEngine:
         Returns:
             자연어 LIME 설명
         """
+        if not LIME_AVAILABLE:
+            return None
+
         try:
             logger.info(f"  LIME 분석 중: {algorithm_name}")
 
