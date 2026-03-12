@@ -1,0 +1,34 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-03-12T04:10:00.000Z",
+  "activeFeatures": [],
+  "primaryFeature": null,
+  "features": {
+    "OmniMetric": {
+      "phase": "archived",
+      "matchRate": 91,
+      "iterationCount": 1,
+      "startedAt": "2026-03-12T02:36:30.472Z",
+      "archivedAt": "2026-03-12T04:10:00.000Z",
+      "archivedTo": "docs/archive/2026-03/OmniMetric/"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-03-12T02:36:30.472Z",
+    "onboardingCompleted": true,
+    "lastActivity": "2026-03-12T04:10:00.000Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-03-12T04:10:00.000Z",
+      "feature": "OmniMetric",
+      "phase": "archived",
+      "action": "archived_with_summary"
+    }
+  ]
+}
