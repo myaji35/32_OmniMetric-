@@ -70,7 +70,7 @@ class MLOpsEngine:
                 if retrain_eligible:
                     logger.warning(f"⚠️ 재학습 트리거: 오차율 {error_metrics['mape']:.2%} > 임계값 {self.error_threshold:.2%}")
                     monitoring_result["action_taken"] = "retrain_scheduled"
-                    # Phase 4에서 실제 재학습 로직 구현
+                    # trigger_retrain()을 통해 실제 토너먼트 재실행
                 else:
                     logger.info(f"재학습 쿨다운 중: {task_id}")
                     monitoring_result["action_taken"] = "cooldown"
@@ -202,9 +202,36 @@ class MLOpsEngine:
             ex=self.retrain_cooldown * 2  # 쿨다운의 2배 동안 보관
         )
 
-        logger.info(f"✅ 재학습 작업 생성: {new_task_id}")
+        logger.info(f"재학습 작업 생성: {new_task_id}")
 
-        # Phase 4에서 실제 토너먼트 재실행 로직 구현
+        # 실제 토너먼트 재실행
+        try:
+            from app.core.engine import TournamentEngine
+
+            engine = TournamentEngine()
+
+            # 원본 작업의 분석 유형 조회
+            original_result = await self.storage.get_result(task_id)
+            task_type = "regression"
+            if original_result:
+                task_type = original_result.get("task_type", "regression")
+
+            # 데이터를 딕셔너리로 변환하여 재분석
+            data_dict = X_new.copy()
+            data_dict["__target__"] = y_new.values
+
+            retrain_result = await engine.run_tournament(
+                task_id=new_task_id,
+                data=data_dict.to_dict(orient="records"),
+                target_column="__target__",
+                task_type=task_type,
+            )
+
+            logger.info(f"재학습 완료: {new_task_id}")
+
+        except Exception as e:
+            logger.error(f"재학습 실행 실패: {e}. 작업 ID는 생성됨: {new_task_id}")
+
         return new_task_id
 
     def get_drift_analysis(

@@ -118,15 +118,25 @@ class TestAlgorithmCoverage:
         algorithms = registry.get_all_algorithms("regression")
 
         # CatBoost가 Python 3.14와 호환되지 않아 59개
-        assert len(algorithms) == 59, f"알고리즘 수 불일치: {len(algorithms)}"
+        assert len(algorithms) == 59, f"회귀 알고리즘 수 불일치: {len(algorithms)}"
 
         # 모든 알고리즘 이름 중복 확인
         names = [name for name, _ in algorithms]
         assert len(names) == len(set(names)), "알고리즘 이름 중복 발견"
 
-        print(f"\n📋 알고리즘 커버리지:")
-        print(f"   - 등록된 알고리즘: {len(algorithms)}개")
-        print(f"   - 중복 없음: ✅")
+    def test_all_analysis_types(self):
+        """4대 분석유형 알고리즘 수 검증"""
+        from app.models.algorithms.registry import AlgorithmRegistry
+
+        registry = AlgorithmRegistry()
+
+        assert len(registry.get_all_algorithms("regression")) == 59
+        assert len(registry.get_all_algorithms("classification")) == 17
+        assert len(registry.get_all_algorithms("multiclass")) == 17
+        assert len(registry.get_all_algorithms("timeseries")) == 61
+
+        total = registry.get_total_count()
+        assert total == 154, f"총 알고리즘 수 불일치: {total} (목표: 154)"
 
     def test_sample_algorithms_execution(self):
         """샘플 알고리즘 실행 테스트"""
@@ -151,10 +161,88 @@ class TestAlgorithmCoverage:
             algo_func = registry.get_algorithm_by_name(algo_name)
             result = algo_func(X, y)
 
-            assert "r2_score" in result, f"{algo_name}: R² 점수 누락"
+            assert "r2_score" in result, f"{algo_name}: R2 점수 누락"
             assert "coefficients" in result, f"{algo_name}: 계수 누락"
 
-            print(f"   - {algo_name}: R²={result['r2_score']:.4f} ✅")
+    def test_timeseries_algorithm_execution(self):
+        """시계열 알고리즘 실행 테스트"""
+        from app.models.algorithms.timeseries.ts_models import (
+            NaiveMeanModel, LinearTS, RandomForestTS,
+        )
+
+        np.random.seed(42)
+        n = 100
+        y = pd.Series(np.sin(np.linspace(0, 8 * np.pi, n)) + np.random.normal(0, 0.1, n))
+        X = pd.DataFrame({"dummy": range(n)})
+
+        for algo_cls in [NaiveMeanModel, LinearTS, RandomForestTS]:
+            algo = algo_cls()
+            result = algo.execute(X, y)
+            assert "r2_score" in result, f"{algo.name}: R2 누락"
+
+
+class TestFeatureEngineering:
+    """파생변수 생성 테스트"""
+
+    def test_feature_generation(self):
+        """파생변수 생성 테스트"""
+        from app.services.feature_engineering import FeatureEngineer
+
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", periods=100, freq="D")
+        data = pd.DataFrame({
+            "date": dates,
+            "value": np.sin(np.linspace(0, 4 * np.pi, 100)) * 100 + 200,
+        })
+
+        result = FeatureEngineer.generate_all_features(
+            data, target_column="value", date_column="date"
+        )
+
+        feature_count = len([c for c in result.columns if c not in ["date", "value"]])
+        assert feature_count > 100, f"파생변수 부족: {feature_count}"
+        assert result.isnull().sum().sum() == 0, "NaN 잔존"
+
+
+class TestSim4Brief:
+    """Sim4Brief 리포트 테스트"""
+
+    def test_brief_report(self):
+        from app.services.nlg import NLGReportGenerator
+
+        winner = {"algorithm_name": "XGBoost", "r2_score": 0.92, "coefficients": {}}
+        result = NLGReportGenerator.generate_sim4brief(
+            winner, {}, [winner], "Y=...", detail_level="brief"
+        )
+        assert result["level"] == "brief"
+        assert "XGBoost" in result["summary"]
+
+    def test_comprehensive_report(self):
+        from app.services.nlg import NLGReportGenerator
+
+        winner = {"algorithm_name": "RF", "r2_score": 0.88, "execution_time": 1.0, "coefficients": {"x": 0.5}}
+        importance = {"x": 100.0}
+        result = NLGReportGenerator.generate_sim4brief(
+            winner, importance, [winner], "Y=0.5*x", detail_level="comprehensive"
+        )
+        assert result["level"] == "comprehensive"
+        assert result["quality_assessment"]["grade"] == "A"
+        assert len(result["variable_analysis"]) == 1
+
+
+class TestAIQA:
+    """AI Q&A 테스트"""
+
+    def test_local_answer(self):
+        from app.services.ai_qa import AIQuestionAnswer
+
+        qa = AIQuestionAnswer()
+        context = {
+            "winner": {"algorithm_name": "XGBoost", "r2_score": 0.92, "coefficients": {"x": 0.5}},
+            "report": {"summary": "테스트"},
+        }
+        answer = qa._generate_local_answer("최적 모델은?", context)
+        assert "XGBoost" in answer
 
 
 if __name__ == "__main__":

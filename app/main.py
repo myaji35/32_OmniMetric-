@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.api_title,
     version=settings.api_version,
-    description="60+ 알고리즘 토너먼트 기반 전방위 통계 분석 엔진",
+    description="125+ 알고리즘 토너먼트 기반 AI 의사결정 시뮬레이션 엔진",
     debug=settings.debug,
     lifespan=lifespan,
     docs_url="/docs" if settings.is_development else None,
@@ -64,12 +64,16 @@ app = FastAPI(
 )
 
 
-# CORS 미들웨어
+# CORS 미들웨어 (보안 강화: 환경변수로 origin 제어)
+_cors_origins = (
+    ["*"] if settings.is_development and not settings.allowed_origins
+    else [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.is_development else [],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 

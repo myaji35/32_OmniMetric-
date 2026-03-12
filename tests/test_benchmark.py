@@ -117,13 +117,13 @@ class TestPerformanceBenchmark:
     def test_algorithm_count(self):
         """등록된 알고리즘 수 검증"""
         engine = TournamentEngine()
+        # 회귀분석 알고리즘 수 (CatBoost Python 3.14 미호환으로 59개)
         algorithm_count = engine.algorithm_registry.get_algorithm_count()
+        assert algorithm_count == 59, f"회귀 알고리즘 수 불일치: {algorithm_count} (목표: 59)"
 
-        # CatBoost가 Python 3.14와 호환되지 않아 59개
-        assert algorithm_count == 59, f"알고리즘 수 불일치: {algorithm_count} (목표: 59)"
-
-        print(f"\n📊 알고리즘 카운트:")
-        print(f"   - 총 {algorithm_count}개 알고리즘 등록 완료")
+        # 전체 알고리즘 수 (4대 유형 합산)
+        total = engine.algorithm_registry.get_total_count()
+        assert total == 154, f"총 알고리즘 수 불일치: {total} (목표: 154)"
 
     def test_data_preprocessing_speed(self):
         """데이터 전처리 속도 테스트"""

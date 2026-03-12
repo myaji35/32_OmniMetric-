@@ -59,12 +59,17 @@ class Settings(BaseSettings):
     nlg_language: Literal["ko", "en"] = "ko"
     nlg_detail_level: Literal["brief", "detailed", "comprehensive"] = "detailed"
 
+    # Security
+    rate_limit_per_minute: int = 60
+    max_upload_size_mb: int = 50
+    allowed_origins: str = ""  # 콤마 구분, 비어있으면 개발환경 전체 허용
+
     # Database (Optional)
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "omnimetric"
     db_user: str = "omnimetric"
-    db_password: str = "changeme"
+    db_password: str = ""  # 환경변수로 반드시 설정 (하드코딩 금지)
 
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -74,6 +79,10 @@ class Settings(BaseSettings):
     # External System Integration
     external_webhook_url: str = ""
     external_api_key: str = ""
+
+    # LLM Integration (AI Q&A)
+    openai_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
 
     @property
     def redis_url(self) -> str:

@@ -57,7 +57,7 @@ htmlcov/
 *.joblib
 *.h5
 *.model
-models/
+/models/
 data/
 *.csv
 *.parquet
