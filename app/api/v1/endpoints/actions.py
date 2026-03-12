@@ -4,7 +4,7 @@ Actions Endpoint
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from app.api.v1.dependencies import verify_api_key
 from app.services.actions import ActionScenarioConverter
@@ -18,6 +18,10 @@ class ActionRequest(BaseModel):
     thresholds: Optional[Dict[str, float]] = Field(
         default=None,
         description='임계값 설정 {"variable_name": threshold_value}',
+    )
+    webhook_url: Optional[str] = Field(
+        default=None,
+        description="시나리오 전달 Webhook URL",
     )
 
 
@@ -34,7 +38,9 @@ async def generate_action_scenarios(
     """행동 시나리오 생성"""
     converter = ActionScenarioConverter()
     try:
-        result = await converter.generate_scenarios(task_id, request.thresholds)
+        result = await converter.generate_scenarios(
+            task_id, request.thresholds, request.webhook_url
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -56,3 +62,22 @@ async def get_action_scenarios(
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get(
+    "/actions/{task_id}/history",
+    summary="시나리오 이력 조회",
+    description="행동 시나리오 생성 이력을 조회합니다.",
+)
+async def get_action_history(
+    task_id: str,
+    _: None = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """시나리오 이력 조회"""
+    converter = ActionScenarioConverter()
+    history = converter.get_history(task_id)
+    return {
+        "task_id": task_id,
+        "total_generations": len(history),
+        "history": history,
+    }

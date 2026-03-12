@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     upload,
     connectors,
     qa,
+    eda,
 )
 
 
@@ -38,3 +39,6 @@ api_router.include_router(qa.router, tags=["AI Q&A"])
 
 # Phase 7: B2B 데이터 커넥터
 api_router.include_router(connectors.router, tags=["B2B 커넥터"])
+
+# 현황분석 (EDA)
+api_router.include_router(eda.router, tags=["현황분석"])

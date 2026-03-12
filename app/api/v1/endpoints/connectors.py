@@ -2,11 +2,11 @@
 B2B Connectors Endpoint
 갑-을 연동 시스템 API (7개 엔드포인트)
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Optional
 
-from app.api.v1.dependencies import verify_api_key
+from app.api.v1.dependencies import verify_api_key, verify_connector_ip
 from app.services.connector import get_connector_service
 
 
@@ -106,13 +106,15 @@ async def verify_connector_key(
 @router.post(
     "/connectors/{connector_id}/sync",
     summary="데이터 수집 트리거",
-    description="을의 데이터를 수동으로 수집합니다.",
+    description="을의 데이터를 수동으로 수집합니다. IP 화이트리스트 검증 적용.",
 )
 async def sync_connector_data(
     connector_id: str,
+    request: Request,
     _: None = Depends(verify_api_key),
 ) -> Dict[str, Any]:
-    """데이터 수집"""
+    """데이터 수집 (IP 화이트리스트 검증 포함)"""
+    await verify_connector_ip(request, connector_id)
     service = get_connector_service()
     try:
         return service.sync_data(connector_id)
@@ -123,16 +125,35 @@ async def sync_connector_data(
 @router.get(
     "/connectors/{connector_id}/schema",
     summary="스키마 자동 탐색",
-    description="을의 데이터 구조를 자동으로 탐색합니다.",
+    description="을의 데이터 구조를 자동으로 탐색합니다. IP 화이트리스트 검증 적용.",
 )
 async def discover_connector_schema(
     connector_id: str,
+    request: Request,
     _: None = Depends(verify_api_key),
 ) -> Dict[str, Any]:
-    """스키마 탐색"""
+    """스키마 탐색 (IP 화이트리스트 검증 포함)"""
+    await verify_connector_ip(request, connector_id)
     service = get_connector_service()
     try:
         return service.discover_schema(connector_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post(
+    "/connectors/{connector_id}/renew",
+    summary="API Key 갱신",
+    description="기존 API Key를 폐기하고 새 키를 발행합니다.",
+)
+async def renew_connector_key(
+    connector_id: str,
+    _: None = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """API Key 갱신"""
+    service = get_connector_service()
+    try:
+        return service.renew_api_key(connector_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 

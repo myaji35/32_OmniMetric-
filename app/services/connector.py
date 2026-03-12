@@ -3,20 +3,120 @@ B2B Connector Service
 갑(OmniMetric)-을(고객사) 데이터 연동 서비스
 """
 import hashlib
+import json
+import os
 import secrets
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from pathlib import Path
 from loguru import logger
 
 from app.core.storage import TaskStorage
 
 
+# 영속 저장 경로 (환경변수 또는 기본 경로)
+CONNECTOR_STORE_PATH = Path(
+    os.environ.get("OMNIMETRIC_CONNECTOR_STORE", "data/connectors.json")
+)
+
+
 class B2BConnectorService:
-    """B2B 데이터 커넥터 서비스"""
+    """B2B 데이터 커넥터 서비스 (파일 기반 영속화)"""
 
     def __init__(self) -> None:
         self.storage = TaskStorage()
-        self._connectors: Dict[str, Dict[str, Any]] = {}  # 인메모리 (Redis 이관 예정)
+        self._connectors: Dict[str, Dict[str, Any]] = {}
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """디스크에서 커넥터 데이터 로드"""
+        if CONNECTOR_STORE_PATH.exists():
+            try:
+                with open(CONNECTOR_STORE_PATH, "r", encoding="utf-8") as f:
+                    self._connectors = json.load(f)
+                logger.info(f"커넥터 데이터 로드: {len(self._connectors)}건")
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"커넥터 데이터 로드 실패, 빈 저장소 시작: {e}")
+                self._connectors = {}
+
+    def _save_to_disk(self) -> None:
+        """디스크에 커넥터 데이터 저장"""
+        CONNECTOR_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(CONNECTOR_STORE_PATH, "w", encoding="utf-8") as f:
+            json.dump(self._connectors, f, ensure_ascii=False, indent=2)
+
+    def verify_ip(self, connector_id: str, client_ip: str) -> bool:
+        """
+        IP 화이트리스트 검증
+
+        Args:
+            connector_id: 커넥터 ID
+            client_ip: 클라이언트 IP
+
+        Returns:
+            허용 여부 (화이트리스트 비어있으면 항상 True)
+        """
+        connector = self._connectors.get(connector_id)
+        if not connector:
+            return False
+
+        whitelist = connector.get("ip_whitelist", [])
+        if not whitelist:
+            return True  # 화이트리스트 미설정 시 모두 허용
+
+        is_allowed = client_ip in whitelist
+        if not is_allowed:
+            logger.warning(
+                f"IP 차단: {client_ip} (커넥터: {connector_id}, "
+                f"허용 목록: {whitelist})"
+            )
+            connector["audit_log"].append({
+                "action": "ip_blocked",
+                "client_ip": client_ip,
+                "timestamp": datetime.now().isoformat(),
+            })
+            self._save_to_disk()
+
+        return is_allowed
+
+    def renew_api_key(self, connector_id: str) -> Dict[str, Any]:
+        """
+        API Key 갱신
+
+        Args:
+            connector_id: 커넥터 ID
+
+        Returns:
+            새 API Key 정보
+        """
+        connector = self._connectors.get(connector_id)
+        if not connector:
+            raise ValueError(f"커넥터 {connector_id}를 찾을 수 없습니다.")
+
+        if connector["status"] != "active":
+            raise ValueError(f"커넥터가 비활성 상태입니다: {connector['status']}")
+
+        # 새 키 생성
+        new_raw_key = secrets.token_urlsafe(48)
+        new_key_hash = hashlib.sha256(new_raw_key.encode()).hexdigest()
+
+        connector["api_key_hash"] = new_key_hash
+        connector["api_key_prefix"] = new_raw_key[:8]
+        connector["audit_log"].append({
+            "action": "key_renewed",
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        self._save_to_disk()
+        logger.info(f"API Key 갱신: {connector['tenant_name']} (ID: {connector_id})")
+
+        return {
+            "connector_id": connector_id,
+            "tenant_name": connector["tenant_name"],
+            "api_key": new_raw_key,
+            "api_key_prefix": new_raw_key[:8],
+            "message": "API Key가 갱신되었습니다. 이전 키는 더 이상 유효하지 않습니다.",
+        }
 
     def create_connector(
         self,
@@ -58,6 +158,7 @@ class B2BConnectorService:
         }
 
         self._connectors[connector_id] = connector
+        self._save_to_disk()
         logger.info(f"B2B 커넥터 생성: {tenant_name} (ID: {connector_id})")
 
         # 응답에는 평문 키를 포함 (최초 1회만 노출)
@@ -125,6 +226,7 @@ class B2BConnectorService:
             "success": is_valid,
             "timestamp": datetime.now().isoformat(),
         })
+        self._save_to_disk()
 
         return is_valid
 
@@ -145,6 +247,7 @@ class B2BConnectorService:
             "timestamp": datetime.now().isoformat(),
         })
 
+        self._save_to_disk()
         logger.info(f"데이터 동기화 트리거: {connector['tenant_name']}")
 
         return {
@@ -165,6 +268,7 @@ class B2BConnectorService:
             "action": "discover_schema",
             "timestamp": datetime.now().isoformat(),
         })
+        self._save_to_disk()
 
         # 스키마 탐색 (실제 구현에서는 을의 API를 호출)
         return {
@@ -182,6 +286,7 @@ class B2BConnectorService:
 
         tenant_name = connector["tenant_name"]
         del self._connectors[connector_id]
+        self._save_to_disk()
 
         logger.info(f"B2B 커넥터 삭제: {tenant_name} (ID: {connector_id})")
 

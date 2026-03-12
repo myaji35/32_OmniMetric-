@@ -2,11 +2,21 @@
 Action Scenario Converter
 분석 결과를 즉시 실행 가능한 행동 시나리오(IF-THEN 규칙)로 변환
 """
-from typing import Dict, Any, List
+import json
+import os
+from typing import Dict, Any, List, Optional
 from datetime import datetime
+from pathlib import Path
 from loguru import logger
+import httpx
 
 from app.core.storage import TaskStorage
+
+
+# 시나리오 이력 저장 경로
+SCENARIO_STORE_PATH = Path(
+    os.environ.get("OMNIMETRIC_SCENARIO_STORE", "data/scenarios.json")
+)
 
 
 class ActionScenarioConverter:
@@ -14,11 +24,77 @@ class ActionScenarioConverter:
 
     def __init__(self) -> None:
         self.storage = TaskStorage()
+        self._history: Dict[str, List[Dict[str, Any]]] = {}
+        self._load_history()
+
+    def _load_history(self) -> None:
+        """시나리오 이력 로드"""
+        if SCENARIO_STORE_PATH.exists():
+            try:
+                with open(SCENARIO_STORE_PATH, "r", encoding="utf-8") as f:
+                    self._history = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                self._history = {}
+
+    def _save_history(self) -> None:
+        """시나리오 이력 저장"""
+        SCENARIO_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(SCENARIO_STORE_PATH, "w", encoding="utf-8") as f:
+            json.dump(self._history, f, ensure_ascii=False, indent=2)
+
+    def get_history(self, task_id: str) -> List[Dict[str, Any]]:
+        """시나리오 이력 조회"""
+        return self._history.get(task_id, [])
+
+    async def send_webhook(
+        self,
+        webhook_url: str,
+        scenarios: Dict[str, Any],
+    ) -> bool:
+        """
+        행동 시나리오를 외부 Webhook으로 전달
+
+        Args:
+            webhook_url: Webhook URL
+            scenarios: 시나리오 데이터
+
+        Returns:
+            전송 성공 여부
+        """
+        logger.info(f"행동 시나리오 Webhook 전송: {webhook_url}")
+        payload = {
+            "event": "action_scenarios_generated",
+            "task_id": scenarios.get("task_id"),
+            "total_scenarios": scenarios.get("total_scenarios"),
+            "top_scenarios": scenarios.get("scenarios", [])[:5],
+            "generated_at": scenarios.get("generated_at"),
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    webhook_url,
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-OmniMetric-Event": "action_scenarios_generated",
+                    },
+                )
+                success = response.status_code in [200, 201, 202, 204]
+                if success:
+                    logger.info(f"시나리오 Webhook 전송 성공: {response.status_code}")
+                else:
+                    logger.warning(f"시나리오 Webhook 응답 오류: {response.status_code}")
+                return success
+        except Exception as e:
+            logger.error(f"시나리오 Webhook 전송 실패: {e}")
+            return False
 
     async def generate_scenarios(
         self,
         task_id: str,
         thresholds: Dict[str, float] | None = None,
+        webhook_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         분석 결과를 행동 시나리오로 변환
@@ -77,13 +153,29 @@ class ActionScenarioConverter:
         # 3. 우선순위 순 정렬
         scenarios.sort(key=lambda x: x["priority"], reverse=True)
 
-        return {
+        result = {
             "task_id": task_id,
             "model": report.winner.algorithm,
             "total_scenarios": len(scenarios),
             "scenarios": scenarios,
             "generated_at": datetime.now().isoformat(),
         }
+
+        # 4. 이력 저장
+        if task_id not in self._history:
+            self._history[task_id] = []
+        self._history[task_id].append({
+            "generated_at": result["generated_at"],
+            "total_scenarios": result["total_scenarios"],
+            "top_rule": scenarios[0]["rule_id"] if scenarios else None,
+        })
+        self._save_history()
+
+        # 5. Webhook 전달 (URL 지정 시)
+        if webhook_url:
+            await self.send_webhook(webhook_url, result)
+
+        return result
 
     def _calculate_priority(self, importance: float, abs_coefficient: float) -> float:
         """우선순위 산정 (Impact x Probability 근사)"""
