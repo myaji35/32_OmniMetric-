@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL maintainer="주식회사 가가호호 <ceo@gagahoho.com>"
 LABEL description="OmniMetric - 전방위 통계 분석 및 의사결정 엔진"
